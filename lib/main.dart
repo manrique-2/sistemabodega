@@ -1,173 +1,23 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+// import 'package:shared_preferences/shared_preferences.dart';  // ← COMENTADA
 
 // PDF
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-void main() {
+// ✅ ISAR
+import 'models/isar_models.dart';
+import 'services/isar_service.dart';
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ✅ Inicializar Isar antes de ejecutar la app
+  await IsarService.init();
+
   runApp(const MyApp());
-}
-
-/* ----------------------------- MODELOS ----------------------------- */
-
-class Product {
-  final String id;
-  final String name;
-  final int stockQty;
-  final double purchasePrice; // PRECIO COMPRA
-  final double salePrice; // PRECIO VENTA
-
-  const Product({
-    required this.id,
-    required this.name,
-    required this.stockQty,
-    required this.purchasePrice,
-    required this.salePrice,
-  });
-
-  Product copyWith({
-    String? id,
-    String? name,
-    int? stockQty,
-    double? purchasePrice,
-    double? salePrice,
-  }) {
-    return Product(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      stockQty: stockQty ?? this.stockQty,
-      purchasePrice: purchasePrice ?? this.purchasePrice,
-      salePrice: salePrice ?? this.salePrice,
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'stockQty': stockQty,
-    'purchasePrice': purchasePrice,
-    'salePrice': salePrice,
-  };
-
-  factory Product.fromJson(Map<String, dynamic> json) => Product(
-    id: (json['id'] ?? '').toString(),
-    name: (json['name'] ?? '').toString(),
-    stockQty: (json['stockQty'] ?? 0) as int,
-    purchasePrice: (json['purchasePrice'] ?? 0).toDouble(),
-    salePrice: (json['salePrice'] ?? 0).toDouble(),
-  );
-}
-
-class SaleDraftItem {
-  final String id;
-  final String productId;
-  final String productName;
-  final int qty;
-  final double unitPrice;
-  final String method; // EFECTIVO | TRANSFERENCIA
-  final int createdAtMs;
-
-  const SaleDraftItem({
-    required this.id,
-    required this.productId,
-    required this.productName,
-    required this.qty,
-    required this.unitPrice,
-    required this.method,
-    required this.createdAtMs,
-  });
-
-  double get total => qty * unitPrice;
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'productId': productId,
-    'productName': productName,
-    'qty': qty,
-    'unitPrice': unitPrice,
-    'method': method,
-    'createdAtMs': createdAtMs,
-  };
-
-  factory SaleDraftItem.fromJson(Map<String, dynamic> json) => SaleDraftItem(
-    id: (json['id'] ?? '').toString(),
-    productId: (json['productId'] ?? '').toString(),
-    productName: (json['productName'] ?? '').toString(),
-    qty: (json['qty'] ?? 0) as int,
-    unitPrice: (json['unitPrice'] ?? 0).toDouble(),
-    method: (json['method'] ?? 'EFECTIVO').toString(),
-    createdAtMs: (json['createdAtMs'] ?? 0) as int,
-  );
-}
-
-/* ----------------------------- STORAGE ----------------------------- */
-
-class StorageService {
-  static const _productsKey = 'products_v1';
-  static const _salesDraftKey = 'sales_draft_v1';
-  static const _salesHistoryKey = 'sales_history_v1';
-
-  static Future<List<Product>> loadProducts() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_productsKey);
-    if (raw == null || raw.trim().isEmpty) return [];
-    final list = (jsonDecode(raw) as List).cast<dynamic>();
-    return list
-        .map((e) => Product.fromJson((e as Map).cast<String, dynamic>()))
-        .toList();
-  }
-
-  static Future<void> saveProducts(List<Product> products) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = jsonEncode(products.map((p) => p.toJson()).toList());
-    await prefs.setString(_productsKey, raw);
-  }
-
-  static Future<List<SaleDraftItem>> loadSalesDraft() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_salesDraftKey);
-    if (raw == null || raw.trim().isEmpty) return [];
-    final list = (jsonDecode(raw) as List).cast<dynamic>();
-    return list
-        .map((e) => SaleDraftItem.fromJson((e as Map).cast<String, dynamic>()))
-        .toList();
-  }
-
-  static Future<void> saveSalesDraft(List<SaleDraftItem> items) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = jsonEncode(items.map((i) => i.toJson()).toList());
-    await prefs.setString(_salesDraftKey, raw);
-  }
-
-  static Future<List<Map<String, dynamic>>> loadSalesHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_salesHistoryKey);
-    if (raw == null || raw.trim().isEmpty) return [];
-    final list = (jsonDecode(raw) as List).cast<dynamic>();
-    return list.map((e) => (e as Map).cast<String, dynamic>()).toList();
-  }
-
-  static Future<void> appendSalesHistory(
-    List<SaleDraftItem> publishedItems,
-  ) async {
-    final history = await loadSalesHistory();
-    final now = DateTime.now();
-    for (final it in publishedItems) {
-      history.add({
-        ...it.toJson(),
-        'publishedAtMs': now.millisecondsSinceEpoch,
-        'publishedDate': '${now.year}-${_two(now.month)}-${_two(now.day)}',
-      });
-    }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_salesHistoryKey, jsonEncode(history));
-  }
-
-  static String _two(int v) => v.toString().padLeft(2, '0');
 }
 
 /* ----------------------------- UI APP ----------------------------- */
@@ -470,17 +320,13 @@ class _PurchasePageState extends State<PurchasePage> {
   }
 
   Future<void> _init() async {
-    final products = await StorageService.loadProducts();
+    final products = await IsarService.loadProducts();
     setState(() {
       _products = products;
       _selectedProduct = _products.isNotEmpty ? _products.first : null;
       _loading = false;
     });
   }
-
-  String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
-
-  Future<void> _saveProducts() async => StorageService.saveProducts(_products);
 
   void _toast(String msg) {
     if (!mounted) return;
@@ -501,16 +347,19 @@ class _PurchasePageState extends State<PurchasePage> {
       return;
     }
 
-    final idx = _products.indexWhere((p) => p.id == _selectedProduct!.id);
-    if (idx < 0) return;
+    // ✅ Actualizar stock en Isar
+    _selectedProduct!.stockQty += qty;
+    await IsarService.updateProduct(_selectedProduct!);
 
-    final current = _products[idx];
-    _products[idx] = current.copyWith(stockQty: current.stockQty + qty);
-    await _saveProducts();
+    // ✅ Recargar productos
+    final products = await IsarService.loadProducts();
 
     setState(() {
+      _products = products;
+      _selectedProduct = products.firstWhere(
+        (p) => p.id == _selectedProduct!.id,
+      );
       _purchaseQtyCtrl.clear();
-      _selectedProduct = _products[idx];
     });
 
     _toast('Compra publicada ✅ (+$qty al stock)');
@@ -537,22 +386,27 @@ class _PurchasePageState extends State<PurchasePage> {
       return;
     }
 
-    final product = Product(
-      id: _newId(),
+    // ✅ Crear producto con Isar
+    final product = Product.create(
       name: name,
       stockQty: qty,
       purchasePrice: 0.0,
       salePrice: 0.0,
     );
 
+    // ✅ Guardar en Isar
+    await IsarService.saveProduct(product);
+
+    // ✅ Recargar productos
+    final products = await IsarService.loadProducts();
+
     setState(() {
-      _products.add(product);
-      _selectedProduct = product;
+      _products = products;
+      _selectedProduct = products.last; // El recién agregado
       _newNameCtrl.clear();
       _newQtyCtrl.clear();
     });
 
-    await _saveProducts();
     _toast('Producto registrado ✅');
   }
 
@@ -744,7 +598,7 @@ class _StockPageState extends State<StockPage> {
   }
 
   Future<void> _init() async {
-    final products = await StorageService.loadProducts();
+    final products = await IsarService.loadProducts();
     setState(() {
       _products = products;
       _loading = false;
@@ -759,21 +613,21 @@ class _StockPageState extends State<StockPage> {
       _products.fold(0.0, (a, p) => a + (p.stockQty * p.purchasePrice));
 
   Future<void> _updateSalePrice(Product p, double newPrice) async {
-    final idx = _products.indexWhere((x) => x.id == p.id);
-    if (idx < 0) return;
-    setState(
-      () => _products[idx] = _products[idx].copyWith(salePrice: newPrice),
-    );
-    await StorageService.saveProducts(_products);
+    p.salePrice = newPrice;
+    await IsarService.updateProduct(p);
+
+    // Recargar productos
+    final products = await IsarService.loadProducts();
+    setState(() => _products = products);
   }
 
   Future<void> _updatePurchasePrice(Product p, double newPrice) async {
-    final idx = _products.indexWhere((x) => x.id == p.id);
-    if (idx < 0) return;
-    setState(
-      () => _products[idx] = _products[idx].copyWith(purchasePrice: newPrice),
-    );
-    await StorageService.saveProducts(_products);
+    p.purchasePrice = newPrice;
+    await IsarService.updateProduct(p);
+
+    // Recargar productos
+    final products = await IsarService.loadProducts();
+    setState(() => _products = products);
   }
 
   Future<void> _deleteProduct(Product p) async {
@@ -796,12 +650,15 @@ class _StockPageState extends State<StockPage> {
     );
     if (ok != true) return;
 
-    setState(() => _products.removeWhere((x) => x.id == p.id));
-    await StorageService.saveProducts(_products);
+    // ✅ Borrar producto de Isar
+    await IsarService.deleteProduct(p.id);
 
-    final draft = await StorageService.loadSalesDraft();
-    final filteredDraft = draft.where((d) => d.productId != p.id).toList();
-    await StorageService.saveSalesDraft(filteredDraft);
+    // ✅ Borrar ventas borrador de este producto
+    await IsarService.deleteDraftsByProductId(p.id);
+
+    // ✅ Recargar productos
+    final products = await IsarService.loadProducts();
+    setState(() => _products = products);
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1140,8 +997,8 @@ class _SalesDayPageState extends State<SalesDayPage> {
   }
 
   Future<void> _init() async {
-    final products = await StorageService.loadProducts();
-    final draft = await StorageService.loadSalesDraft();
+    final products = await IsarService.loadProducts();
+    final draft = await IsarService.loadSalesDraft();
     setState(() {
       _products = products;
       _draft = draft;
@@ -1152,8 +1009,6 @@ class _SalesDayPageState extends State<SalesDayPage> {
       _loading = false;
     });
   }
-
-  String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
 
   void _toast(String msg) {
     if (!mounted) return;
@@ -1173,8 +1028,6 @@ class _SalesDayPageState extends State<SalesDayPage> {
   double _sumFiltered() => _filteredDraft().fold(0.0, (a, b) => a + b.total);
   String _money(double v) => v.toStringAsFixed(2);
 
-  Future<void> _saveDraft() async => StorageService.saveSalesDraft(_draft);
-
   void _onSelectedProduct(Product p) {
     setState(() {
       _selectedProduct = p;
@@ -1193,26 +1046,32 @@ class _SalesDayPageState extends State<SalesDayPage> {
     if (qty <= 0) return _toast('Cantidad inválida.');
     if (price <= 0) return _toast('Precio inválido.');
 
-    final item = SaleDraftItem(
-      id: _newId(),
+    // ✅ Crear item con Isar
+    final item = SaleDraftItem.create(
       productId: p.id,
       productName: p.name,
       qty: qty,
       unitPrice: price,
       method: method,
-      createdAtMs: DateTime.now().millisecondsSinceEpoch,
     );
 
+    // ✅ Guardar en Isar
+    await IsarService.saveSaleDraft(item);
+
+    // ✅ Recargar borrador
+    final draft = await IsarService.loadSalesDraft();
     setState(() {
-      _draft.insert(0, item);
+      _draft = draft;
       _qtyCtrl.clear();
     });
-    await _saveDraft();
   }
 
-  Future<void> _removeDraftItem(String id) async {
-    setState(() => _draft.removeWhere((e) => e.id == id));
-    await _saveDraft();
+  Future<void> _removeDraftItem(int id) async {
+    await IsarService.deleteSaleDraft(id);
+
+    // ✅ Recargar borrador
+    final draft = await IsarService.loadSalesDraft();
+    setState(() => _draft = draft);
   }
 
   bool _publishing = false;
@@ -1251,7 +1110,7 @@ class _SalesDayPageState extends State<SalesDayPage> {
       setState(() => _publishing = true);
 
       final productsMap = {for (final p in _products) p.id: p};
-      final qtyByProduct = <String, int>{};
+      final qtyByProduct = <int, int>{}; // ✅ Cambiado de String a int
 
       for (final it in _draft) {
         qtyByProduct[it.productId] = (qtyByProduct[it.productId] ?? 0) + it.qty;
@@ -1271,23 +1130,31 @@ class _SalesDayPageState extends State<SalesDayPage> {
         }
       }
 
-      final updated = _products.map((p) {
-        final sold = qtyByProduct[p.id] ?? 0;
-        return sold == 0 ? p : p.copyWith(stockQty: p.stockQty - sold);
-      }).toList();
+      // ✅ Actualizar stock de productos en Isar
+      for (final entry in qtyByProduct.entries) {
+        final product = _products.firstWhere((p) => p.id == entry.key);
+        product.stockQty -= entry.value;
+        await IsarService.updateProduct(product);
+      }
 
-      await StorageService.saveProducts(updated);
-      await StorageService.appendSalesHistory(_draft);
+      // ✅ Publicar ventas al historial
+      await IsarService.publishSales(_draft);
+
+      // ✅ Limpiar borrador
+      await IsarService.clearSalesDraft();
+
+      // ✅ Recargar datos
+      final products = await IsarService.loadProducts();
+      final draft = await IsarService.loadSalesDraft();
 
       if (!mounted) return;
 
       setState(() {
-        _products = updated;
-        _draft = [];
+        _products = products;
+        _draft = draft;
         _filter = SalesFilter.all;
       });
 
-      await _saveDraft();
       _toast('Ventas publicadas ✅ (Stock actualizado)');
     } catch (e) {
       _toast('Ocurrió un error al publicar: $e');

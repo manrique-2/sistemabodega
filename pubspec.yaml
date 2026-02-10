@@ -1,5 +1,5 @@
 name: sistemabodega
-description: "A new Flutter project."
+description: "Sistema de gestión para Minimarket Bodega Angel Manrique"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -31,10 +31,13 @@ dependencies:
   flutter:
     sdk: flutter
 
-  shared_preferences: ^2.2.3
   pdf: ^3.11.3
   printing: ^5.14.2
   cupertino_icons: ^1.0.8
+
+  isar: ^3.1.0+1
+  isar_flutter_libs: ^3.1.0+1
+  path_provider: ^2.1.1
 
 
 dev_dependencies:
@@ -47,7 +50,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
-
+  isar_generator: ^3.1.0+1
+  build_runner: ^2.4.6
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
